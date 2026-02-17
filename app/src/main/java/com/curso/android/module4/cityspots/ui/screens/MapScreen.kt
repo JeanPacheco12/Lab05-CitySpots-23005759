@@ -229,22 +229,26 @@ fun MapScreen(
          * - Las imágenes se cargan correctamente
          */
         var selectedSpot by remember { mutableStateOf<SpotEntity?>(null) }
+        // Añadí un estado para el diálogo de eliminación.
+        var spotToDelete by remember { mutableStateOf<SpotEntity?>(null) }
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Mapa con markers
+            // 1. MAPA CON MARCADORES
+            // Ahora pasamos el evento onSpotLongClick
             SpotMap(
                 spots = spots,
                 userLocation = userLocation,
                 cameraPositionState = cameraPositionState,
                 onSpotClick = { spot -> selectedSpot = spot },
-                onMapClick = { selectedSpot = null }
+                onMapClick = { selectedSpot = null },
+                onSpotLongClick = { spot -> spotToDelete = spot } // <--- ¡AQUÍ CONECTAMOS EL BORRADO!
             )
 
-            // Card flotante con info del spot seleccionado
+            // 2. CARD FLOTANTE CON DETALLES
             selectedSpot?.let { spot ->
                 SpotInfoCard(
                     spot = spot,
@@ -254,10 +258,26 @@ fun MapScreen(
                 )
             }
 
-            // Indicador de carga centrado
+            // 3. INDICADOR DE CARGA
             if (isLoading) {
                 CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center)
+                )
+            }
+
+            // 4. DIÁLOGO DE CONFIRMACIÓN (NUEVO)
+            // Se muestra solo si spotToDelete no es null
+            spotToDelete?.let { spot ->
+                DeleteConfirmationDialog(
+                    spot = spot,
+                    onConfirm = {
+                        viewModel.deleteSpot(spot) // Llamamos al ViewModel
+                        spotToDelete = null        // Cerramos el diálogo
+                        selectedSpot = null        // Por si acaso estaba seleccionado
+                    },
+                    onDismiss = {
+                        spotToDelete = null        // Solo cerramos el diálogo
+                    }
                 )
             }
         }
@@ -292,7 +312,8 @@ private fun SpotMap(
     userLocation: LatLng?,
     cameraPositionState: CameraPositionState,
     onSpotClick: (SpotEntity) -> Unit,
-    onMapClick: () -> Unit
+    onMapClick: () -> Unit,
+    onSpotLongClick: (SpotEntity) -> Unit
 ) {
     /**
      * CONCEPTO: MapProperties
@@ -354,9 +375,13 @@ private fun SpotMap(
             Marker(
                 state = markerState,
                 title = spot.title,
+                snippet = "Mantén presionado para borrar", // Pista visual
                 onClick = {
                     onSpotClick(spot)
-                    true // Consumir el click (no mostrar InfoWindow por defecto)
+                    false // Cambio a FALSE para que se muestre el título (InfoWindow).
+                },
+                onInfoWindowLongClick = { // AQUÍ DETECTA EL CLICK LARGO.
+                    onSpotLongClick(spot)
                 }
             )
         }
@@ -460,4 +485,27 @@ private fun SpotInfoCard(
             )
         }
     }
+}
+
+@Composable
+fun DeleteConfirmationDialog(
+    spot: SpotEntity,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = "Eliminar Spot") },
+        text = { Text(text = "¿Estás seguro de que deseas eliminar '${spot.title}'? Esta acción no se puede deshacer.") },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onConfirm) {
+                Text("Eliminar", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
 }
